@@ -629,7 +629,7 @@
     },
     "/bridge/transaction/address-validation": {
       "post": {
-        "description": "Originator VASP can check if the beneficiary VASP owns the wallet address before originator personal information is sent.",
+        "description": "Originator VASP can check if the beneficiary VASP owns the wallet address before originator personal information is sent.\n\nThe request body does not name the originator VASP, so the signature is verified with the public key of the VASP that owns the API key.",
         "summary": "Bridge/AddressValidation",
         "tags": [
           "Bridge"
@@ -834,7 +834,7 @@
     },
     "/bridge/transaction/permission-request": {
       "post": {
-        "description": "The first step of the permission request flow. Should be called by the originator VASP to inform Sygna Bridge about the creation of a compliant transaction.\n\n\n![](https://i.imgur.com/zI8TwAL.png)  \nThe originator VASP should use its private key to construct a signature that includes the encrypted  private_info and other body parameters.  \nThe originator VASP uses its private key and the callback_url to construct the signature in callback.",
+        "description": "The first step of the permission request flow. Should be called by the originator VASP to inform Sygna Bridge about the creation of a compliant transaction.\n\n\n![](https://i.imgur.com/zI8TwAL.png)  \nThe originator VASP should use its private key to construct a signature that includes the encrypted  private_info and other body parameters.  \nThe originator VASP uses its private key and the callback_url to construct the signature in callback.\n\n**Which public key is used to verify the signatures**  \nSygna Bridge verifies `data.signature` and `callback.signature` with the public key of the VASP that signs the payload, i.e. the `originator_vasp.vasp_code` in the request body. When one API key serves multiple VASPs (for example a vendor and its sub VASPs), sign with the private key of the originator VASP named in the request, not the API key owner's key. The beneficiary VASP verifies the forwarded `data.signature` with the same originator public key. `data.signature` and `callback.signature` are verified together under one key, so both must be signed with the same key.  \nErrors: `403 / 010205` if `data.signature` does not verify and `403 / 010213` if `callback.signature` does not verify. The VASP named as originator and the VASP that owns the API key must exist and be active (`MERGED`); otherwise the request fails with `404 / 010322` before any signature is checked.  \nTransition period (deprecated): requests signed with the API key owner's key are still accepted, but the beneficiary VASP will not be able to verify them. This fallback will be removed in a future release, so please sign with the originator VASP's key.",
         "summary": "Bridge/PermissionRequest",
         "tags": [
           "Bridge"
@@ -976,7 +976,7 @@
             }
           },
           "403": {
-            "description": "Use an incorrect private key to sign the API request body.",
+            "description": "Use an incorrect private key to sign the API request body. The signatures are verified with the public key of `originator_vasp.vasp_code`; otherwise the request fails with `010205` (Verify originator's data signature failed) or `010213` (Verify originator's callback signature failed).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1082,7 +1082,7 @@
     },
     "/bridge/transaction/cdd-request": {
       "post": {
-        "description": "This API can be used to request enhanced Customer Due Diligence (CDD) information from the originating VASP.",
+        "description": "This API can be used to request enhanced Customer Due Diligence (CDD) information from the originating VASP.\n\nThe signature is verified with the public key of the beneficiary VASP of the transfer (`transfer_id`). When one API key serves multiple VASPs, sign with the private key of that beneficiary VASP.  \nBecause the signing VASP is taken from the transfer, the transfer is looked up before the signature is verified: an unknown `transfer_id` returns `404 / 010319` and an API key without permission for the transfer returns `403 / 010211`, even if the signature is also wrong. The beneficiary VASP of the transfer and the VASP that owns the API key must exist and be active (`MERGED`), otherwise `404 / 010322` is returned before any signature is checked. A signature that does not verify returns `403 / 010207` (Verify beneficiary's signature failed).  \nTransition period (deprecated): a signature made with the API key owner's key is still accepted; this fallback will be removed in a future release.",
         "summary": "Bridge/CDDRequest",
         "tags": [
           "Bridge"
@@ -1377,7 +1377,7 @@
     },
     "/bridge/transaction/cdd": {
       "post": {
-        "description": "This API is used to send the Customer Due Diligence (CDD) information either before or after it is requested by the beneficiary VASP.",
+        "description": "This API is used to send the Customer Due Diligence (CDD) information either before or after it is requested by the beneficiary VASP.\n\nThe signature is verified with the public key of the originator VASP of the transfer (`transfer_id`). When one API key serves multiple VASPs, sign with the private key of that originator VASP.  \nBecause the signing VASP is taken from the transfer, the transfer is looked up before the signature is verified: an unknown `transfer_id` returns `404 / 010319` and an API key without permission for the transfer returns `403 / 010211`, even if the signature is also wrong. The originator VASP of the transfer and the VASP that owns the API key must exist and be active (`MERGED`), otherwise `404 / 010322` is returned before any signature is checked. A signature that does not verify returns `403 / 010205` (Verify originator's data signature failed).  \nTransition period (deprecated): a signature made with the API key owner's key is still accepted; this fallback will be removed in a future release.",
         "summary": "Bridge/CDD",
         "tags": [
           "Bridge"
@@ -1440,7 +1440,7 @@
     },
     "/bridge/transaction/cancel": {
       "post": {
-        "description": "The originating VASP can cancel the permission request through this API.",
+        "description": "The originating VASP can cancel the permission request through this API.\n\nThe signature is verified with the public key of the originator VASP of the transfer (`transfer_id`). An API key that serves multiple VASPs (for example a vendor) can cancel a transfer of any VASP it serves, as long as the request is signed with that originator VASP's private key.  \nThe checks run in this order and the first failure is returned: the transfer is looked up (`404 / 010319`); the API key must be the originator VASP or a vendor serving it (`400 / 010414`); the transfer must not be cancelled already (`400 / 010418`), must not have a txid (`400 / 010415`) and must not be rejected by the beneficiary VASP (`400 / 010417`); finally the originator VASP and the VASP that owns the API key must exist and be active (`MERGED`, otherwise `404 / 010322`) and the signature is verified (`403 / 010205` if it does not verify). A bad signature on a transfer that can no longer be cancelled therefore returns the state error, not `010205`. Error codes may be wrapped by a parent code in `err_code_stacks` (for example `010416`), but `err_code` is the code listed above.  \nTransition period (deprecated): a signature made with the API key owner's key is still accepted; this fallback will be removed in a future release.",
         "summary": "Bridge/Cancel",
         "tags": [
           "Bridge"
